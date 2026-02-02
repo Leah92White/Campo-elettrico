@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratorio di Fisica: Campo Elettrico</title>
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; background: #f8f9fa; color: #333; margin: 0; padding: 20px; }
+        .controls { display: flex; gap: 20px; background: white; padding: 20px; border-radius: 15px; margin-bottom: 20px; align-items: center; flex-wrap: wrap; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border: 1px solid #eef0f2; }
+        #app-container { position: relative; border-radius: 15px; background: white; box-shadow: 0 12px 30px rgba(0,0,0,0.1); overflow: hidden; border: 1px solid #dee2e6; }
+        canvas { cursor: crosshair; display: block; }
+        .data-panel { position: absolute; top: 20px; right: 20px; background: rgba(255,255,255,0.95); padding: 18px; border-radius: 12px; border-left: 6px solid #2ecc71; font-size: 14px; width: 240px; pointer-events: none; box-shadow: 0 4px 12px rgba(0,0,0,0.1); color: #2c3e50; line-height: 1.5; }
+        label { font-size: 14px; font-weight: 700; color: #495057; }
+        select { padding: 8px; border-radius: 8px; border: 1px solid #ced4da; background: white; cursor: pointer; outline: none; }
+        select:hover { border-color: #adb5bd; }
+        h2 { color: #2c3e50; margin-bottom: 15px; font-weight: 800; }
+        hr { border: 0; border-top: 1px solid #eee; margin: 10px 0; }
+    </style>
+</head>
+<body>
+
+    <h2>Laboratorio Interattivo di Fisica</h2>
+
+    <div class="controls">
+        <div>
+            <label>Carica Sorgente Q:</label>
+            <select id="qSource">
+                <option value="1">Positiva (+)</option>
+                <option value="-1">Negativa (-)</option>
+            </select>
+        </div>
+
+        <div>
+            <label>Visualizzazione:</label>
+            <select id="viewMode">
+                <option value="arrows">Vettori Dinamici (Intensità E)</option>
+                <option value="lines">Linee di Campo</option>
+                <option value="3d">Montagna / Buca 3D</option>
+            </select>
+        </div>
+
+        <div>
+            <input type="checkbox" id="checkCharge" checked>
+            <label for="checkCharge">Carica di prova q</label>
+            <select id="qTest">
+                <option value="1">+1</option>
+                <option value="-1">-1</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="app-container">
+        <canvas id="mainCanvas" width="900" height="550"></canvas>
+        <div id="dataPanel" class="data-panel"></div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('mainCanvas');
+        const ctx = canvas.getContext('2d');
+        const qSourceEl = document.getElementById('qSource');
+        const viewMode = document.getElementById('viewMode');
+        const checkCharge = document.getElementById('checkCharge');
+        const qTestEl = document.getElementById('qTest');
+        const dataPanel = document.getElementById('dataPanel');
+
+        let mousePos = { x: 650, y: 350 };
+        const cx = 450, cy = 275; // Centro del campo
+        const K = 12; // Costante per la scala dei calcoli
+
+        // Gestione movimento mouse
+        canvas.addEventListener('mousemove', e => {
+            const rect = canvas.getBoundingClientRect();
+            mousePos.x = e.clientX - rect.left;
+            mousePos.y = e.clientY - rect.top;
+            draw();
+        });
+
+        // Funzione per disegnare la punta delle frecce
+        function drawArrowHead(x, y, angle, color, size) {
+            if (size < 2) return;
+            ctx.fillStyle = color;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x - size * Math.cos(angle - 0.5), y - size * Math.sin(angle - 0.5));
+            ctx.lineTo(x - size * Math.cos(angle + 0.5), y - size * Math.sin(angle + 0.5));
+            ctx.fill();
+        }
+
+        function draw() {
+            const Q = parseInt(qSourceEl.value);
+            const q = parseInt(qTestEl.value);
+            const mode = viewMode.value;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // Calcoli Sonda (E e V nel vuoto)
+            const dx = mousePos.x - cx, dy = mousePos.y - cy;
+            const r_px = Math.hypot(dx, dy);
+            const r = Math.max(r_px / 50, 0.5); // Distanza normalizzata
+            const V = (K * Q) / r;
+            const E_val = Math.abs(K * Q) / (r * r);
+
+            // Aggiornamento Pannello Dati
+            dataPanel.innerHTML = `<b>Punto nello Spazio:</b><br>
+                                   Potenziale (V): ${V.toFixed(2)} V<br>
+                                   Intensità Campo (E): ${E_val.toFixed(2)} N/C`;
+            
+            if(checkCharge.checked) {
+                dataPanel.innerHTML += `<hr><b>Effetto sulla carica q:</b><br>
+                                       Energia Pot. (U): ${(V * q).toFixed(2)} J<br>
+                                       Forza (F): ${(E_val * Math.abs(q)).toFixed(2)} N`;
+            }
+
+            if (mode === '3d') {
+                render3D(Q, q);
+            } else {
+                render2D(Q, q, mode);
+            }
+        }
+
+        function render2D(Q, q, mode) {
+            const colorField = Q > 0 ? '#e74c3c' : '#3498db';
+
+            if (mode === 'arrows') {
+                // Griglia di vettori
+                for(let x=45; x<canvas.width; x+=45) {
+                    for(let y=45; y<canvas.height; y+=45) {
+                        const ddx = x - cx;
+                        const ddy = y - cy;
+                        const dist = Math.hypot(ddx, ddy);
+                        if(dist < 35) continue;
+
+                        const ang = Math.atan2(ddy, ddx);
+                        const finalAng = Q > 0 ? ang : ang + Math.PI;
+                        
+                        // Lunghezza freccia basata su 1/r
+                        let arrowLen = 4500 / (dist * 1.2);
+                        arrowLen = Math.min(arrowLen, 35); // Limite massimo
+                        if (arrowLen < 3) continue;
+
+                        ctx.strokeStyle = colorField;
+                        ctx.globalAlpha = Math.min(180/dist, 0.7);
+                        ctx.lineWidth = 1 + (arrowLen / 25);
+
+                        ctx.beginPath();
+                        ctx.moveTo(x, y);
+                        const ex = x + Math.cos(finalAng) * arrowLen;
+                        const ey = y + Math.sin(finalAng) * arrowLen;
+                        ctx.lineTo(ex, ey);
+                        ctx.stroke();
+                        drawArrowHead(ex, ey, finalAng, colorField, 3 + arrowLen/6);
+                    }
+                }
+            } else {
+                // Linee di campo classiche
+                ctx.strokeStyle = colorField;
+                ctx.globalAlpha = 0.3;
+                ctx.lineWidth = 1.5;
+                for(let i=0; i<16; i++) {
+                    const ang = (i/16) * Math.PI * 2;
+                    ctx.beginPath(); 
+                    ctx.moveTo(cx, cy); 
+                    ctx.lineTo(cx + Math.cos(ang) * 600, cy + Math.sin(ang) * 600); 
+                    ctx.stroke();
+                    // Frecce fisse sulle linee
+                    for(let d=100; d<500; d+=120) {
+                        drawArrowHead(cx + Math.cos(ang)*d, cy + Math.sin(ang)*d, Q > 0 ? ang : ang + Math.PI, colorField, 10);
+                    }
+                }
+            }
+
+            // Sorgente (Centro)
+            ctx.globalAlpha = 1.0;
+            ctx.beginPath(); ctx.arc(cx, cy, 20, 0, Math.PI*2);
+            ctx.fillStyle = colorField; ctx.fill();
+            ctx.strokeStyle = "white"; ctx.lineWidth = 3; ctx.stroke();
+            ctx.fillStyle = "white"; ctx.font = "bold 22px Arial"; ctx.textAlign="center";
+            ctx.fillText(Q > 0 ? "+" : "-", cx, cy + 8);
+
+            // Carica di Prova / Sonda
+            if(checkCharge.checked) {
+                const dx = mousePos.x - cx, dy = mousePos.y - cy;
+                const fAng = (Q * q > 0) ? Math.atan2(dy, dx) : Math.atan2(dy, dx) + Math.PI;
+                
+                // Vettore Forza Verde
+                ctx.strokeStyle = "#2ecc71"; ctx.lineWidth = 4;
+                ctx.beginPath(); ctx.moveTo(mousePos.x, mousePos.y);
+                const fex = mousePos.x + Math.cos(fAng) * 55, fey = mousePos.y + Math.sin(fAng) * 55;
+                ctx.lineTo(fex, fey); ctx.stroke();
+                drawArrowHead(fex, fey, fAng, "#2ecc71", 12);
+
+                // Pallina q
+                ctx.beginPath(); ctx.arc(mousePos.x, mousePos.y, 11, 0, Math.PI*2);
+                ctx.fillStyle = q > 0 ? '#f39c12' : '#9b59b6'; ctx.fill();
+                ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.stroke();
+            }
+        }
+
+        function render3D(Q, q) {
+            const color = Q > 0 ? '#e74c3c' : '#3498db';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 0.8;
+            const step = 25;
+
+            // Disegno griglia Wireframe 3D
+            for (let i = -225; i <= 225; i += step) {
+                ctx.globalAlpha = 0.3;
+                // Linee longitudinali
+                ctx.beginPath();
+                for (let j = -225; j <= 225; j += 10) {
+                    const r = Math.sqrt(i*i + j*j) / 35;
+                    const z = (Q * 100) / Math.sqrt(r*r + 1.8);
+                    const px = cx + (i - j) * 0.9;
+                    const py = cy + (i + j) * 0.4 - z;
+                    if (j === -225) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+
+                // Linee trasversali
+                ctx.beginPath();
+                for (let j = -225; j <= 225; j += 10) {
+                    const r = Math.sqrt(j*j + i*i) / 35;
+                    const z = (Q * 100) / Math.sqrt(r*r + 1.8);
+                    const px = cx + (j - i) * 0.9;
+                    const py = cy + (j + i) * 0.4 - z;
+                    if (j === -225) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+                }
+                ctx.stroke();
+            }
+
+            // Sorgente in 3D (Posizione rialzata)
+            const sz = (Q * 100) / Math.sqrt(1.8);
+            ctx.globalAlpha = 1.0;
+            ctx.beginPath(); ctx.arc(cx, cy - sz, 16, 0, Math.PI*2);
+            ctx.fillStyle = color; ctx.fill();
+            ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.stroke();
+
+            // Sonda / Carica di prova in 3D
+            if(checkCharge.checked) {
+                const mx = mousePos.x - cx;
+                const my = (mousePos.y - cy) * 2.5; // De-proiezione per raggio
+                const r3d = Math.sqrt(mx*mx + my*my) / 35;
+                const mz = (Q * 100) / Math.sqrt(r3d*r3d + 1.8);
+                
+                ctx.beginPath(); 
+                ctx.arc(mousePos.x, mousePos.y - mz, 9, 0, Math.PI*2);
+                ctx.fillStyle = q > 0 ? '#f39c12' : '#9b59b6'; ctx.fill();
+                ctx.strokeStyle = "white"; ctx.stroke();
+            }
+        }
+
+        // Avvio iniziale
+        draw();
+    </script>
+</body>
+</html>
